@@ -68,6 +68,21 @@ This writes or replaces `latest.tar.gz`. The archive contains the contents of
 the source folder at the time the differential chain was last updated. If no
 files have changed, `diff` reports that and does not create an archive.
 
+To merge the current full and differential archives into a new full backup and
+start a new backup chain, run:
+
+```sh
+filedelta compact -backup-dir /srv/backups/site
+```
+
+The new full archive is added without deleting the previous archives.
+To delete the full and differential archives in the previous chain after the
+new full archive has been created and registered, add `-delete-old`:
+
+```sh
+filedelta compact -backup-dir /srv/backups/site -delete-old
+```
+
 Run `filedelta --help` for command syntax. The backup directory must be outside
 the source folder. A new `full` starts a new chain; existing archives are kept.
 Differential deletions are recorded in `.filedelta/state.json` and applied when

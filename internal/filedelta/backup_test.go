@@ -96,6 +96,92 @@ func TestFullDiffAndLatest(t *testing.T) {
 	}
 }
 
+func TestCompactStartsNewFullBackupChain(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	backupDir := filepath.Join(root, "backups")
+	if err := os.MkdirAll(source, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "file.txt"), []byte("before"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	if err := run([]string{"full", "-source", source, "-backup-dir", backupDir}, &stdout, io.Discard); err != nil {
+		t.Fatalf("run full backup: %v", err)
+	}
+	oldState, err := loadState(backupDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldFull := oldState.Archives[0].File
+	if err := os.WriteFile(filepath.Join(source, "file.txt"), []byte("after"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"diff", "-source", source, "-backup-dir", backupDir}, &stdout, io.Discard); err != nil {
+		t.Fatalf("run differential backup: %v", err)
+	}
+
+	stdout.Reset()
+	if err := run([]string{"compact", "-backup-dir", backupDir}, &stdout, io.Discard); err != nil {
+		t.Fatalf("run compact: %v", err)
+	}
+	state, err := loadState(backupDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Archives) != 1 || !strings.HasPrefix(state.Archives[0].File, "full-") {
+		t.Fatalf("compact did not start a new full chain: %+v", state.Archives)
+	}
+	if state.Archives[0].File == oldFull {
+		t.Fatalf("compact reused the previous full archive: %s", oldFull)
+	}
+	if _, err := os.Stat(filepath.Join(backupDir, oldFull)); err != nil {
+		t.Fatalf("compact removed the previous archive: %v", err)
+	}
+	contents := readTarFiles(t, filepath.Join(backupDir, state.Archives[0].File))
+	if string(contents["file.txt"]) != "after" {
+		t.Fatalf("compacted full archive has unexpected contents: %v", contents)
+	}
+
+	if err := os.WriteFile(filepath.Join(source, "file.txt"), []byte("after compact"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"diff", "-source", source, "-backup-dir", backupDir}, &stdout, io.Discard); err != nil {
+		t.Fatalf("run differential backup after compact: %v", err)
+	}
+	state, err = loadState(backupDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Archives) != 2 || !strings.HasPrefix(state.Archives[0].File, "full-") ||
+		!strings.HasPrefix(state.Archives[1].File, "diff-") {
+		t.Fatalf("unexpected chain after differential backup: %+v", state.Archives)
+	}
+
+	oldArchives := append([]archiveRecord(nil), state.Archives...)
+	stdout.Reset()
+	if err := run([]string{"compact", "-backup-dir", backupDir, "-delete-old"}, &stdout, io.Discard); err != nil {
+		t.Fatalf("run compact with old archive deletion: %v", err)
+	}
+	state, err = loadState(backupDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Archives) != 1 || !strings.HasPrefix(state.Archives[0].File, "full-") {
+		t.Fatalf("compact with deletion did not start a new full chain: %+v", state.Archives)
+	}
+	for _, record := range oldArchives {
+		if _, err := os.Stat(filepath.Join(backupDir, record.File)); !os.IsNotExist(err) {
+			t.Errorf("old archive %s was not deleted; stat error: %v", record.File, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(backupDir, state.Archives[0].File)); err != nil {
+		t.Fatalf("new full archive was removed: %v", err)
+	}
+}
+
 func TestSafeArchivePath(t *testing.T) {
 	for _, name := range []string{"../outside", "/absolute", `folder\file`, "C:/outside"} {
 		if _, err := safeArchivePath(name); err == nil {

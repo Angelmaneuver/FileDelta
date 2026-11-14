@@ -157,41 +157,86 @@ func createLatest(backupDir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	name := "latest.tar.gz"
+	if _, err := reconstructLatest(backupDir, state, filepath.Join(backupDir, name)); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+func compactBackup(backupDir string, deleteOld bool) (string, error) {
+	release, err := acquireLock(backupDir)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+
+	state, err := loadState(backupDir)
+	if err != nil {
+		return "", err
+	}
+	oldArchives := state.Archives
+	name, err := uniqueArchiveName(backupDir, "full")
+	if err != nil {
+		return "", err
+	}
+	manifest, err := reconstructLatest(backupDir, state, filepath.Join(backupDir, name))
+	if err != nil {
+		return "", err
+	}
+	state.Manifest = manifest
+	state.Archives = []archiveRecord{{File: name}}
+	if err := saveState(backupDir, state); err != nil {
+		return "", err
+	}
+	if deleteOld {
+		var removeErrors []error
+		for _, record := range oldArchives {
+			if err := os.Remove(filepath.Join(backupDir, record.File)); err != nil && !os.IsNotExist(err) {
+				removeErrors = append(removeErrors, fmt.Errorf("remove old archive %s: %w", record.File, err))
+			}
+		}
+		if err := errors.Join(removeErrors...); err != nil {
+			return "", err
+		}
+	}
+	return name, nil
+}
+
+func reconstructLatest(backupDir string, state backupState, destination string) (map[string]manifestEntry, error) {
 	work, err := os.MkdirTemp("", "filedelta-restore-*")
 	if err != nil {
-		return "", fmt.Errorf("create reconstruction directory: %w", err)
+		return nil, fmt.Errorf("create reconstruction directory: %w", err)
 	}
 	defer os.RemoveAll(work)
 
 	directories := make(map[string]directoryMetadata)
 	for _, record := range state.Archives {
 		if err := applyArchive(filepath.Join(backupDir, record.File), work, directories); err != nil {
-			return "", err
+			return nil, err
 		}
 		for _, deleted := range record.Deleted {
 			if err := removeTreePath(work, deleted); err != nil {
-				return "", fmt.Errorf("apply deletion %s: %w", deleted, err)
+				return nil, fmt.Errorf("apply deletion %s: %w", deleted, err)
 			}
 			delete(directories, deleted)
 		}
 	}
 	if err := restoreDirectoryMetadata(work, directories); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	manifest, entries, err := scanTree(work)
 	if err != nil {
-		return "", fmt.Errorf("verify reconstructed files: %w", err)
+		return nil, fmt.Errorf("verify reconstructed files: %w", err)
 	}
 	if !manifestsEqual(manifest, state.Manifest) {
-		return "", errors.New("reconstructed files do not match the latest backup state")
+		return nil, errors.New("reconstructed files do not match the latest backup state")
 	}
-
-	name := "latest.tar.gz"
-	if err := createArchive(filepath.Join(backupDir, name), entries); err != nil {
-		return "", err
+	if err := createArchive(destination, entries); err != nil {
+		return nil, err
 	}
-	return name, nil
+	return manifest, nil
 }
 
 type directoryMetadata struct {

@@ -20,7 +20,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	command := args[0]
-	if command != "full" && command != "diff" && command != "latest" {
+	if command != "full" && command != "diff" && command != "latest" && command != "compact" {
 		return fmt.Errorf("unknown command %q (use --help)", command)
 	}
 
@@ -28,6 +28,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 	source := flags.String("source", "", "source folder to back up (required for full and diff)")
 	backupDir := flags.String("backup-dir", "", "directory in which to store backups (required)")
+	deleteOld := flags.Bool("delete-old", false, "delete previous full and differential archives after compact")
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -36,6 +37,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments: %v", flags.Args())
+	}
+	if *deleteOld && command != "compact" {
+		return errors.New("-delete-old is only valid for compact")
 	}
 	if *backupDir == "" {
 		return errors.New("-backup-dir is required")
@@ -83,6 +87,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		fmt.Fprintf(stdout, "Latest-state archive created: %s\n", name)
+	case "compact":
+		name, err := compactBackup(backupPath, *deleteOld)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "Backup chain compacted into full archive: %s\n", name)
 	}
 	return nil
 }
@@ -94,11 +104,15 @@ Usage:
   filedelta full   -source <folder> -backup-dir <folder>
   filedelta diff   -source <folder> -backup-dir <folder>
   filedelta latest -backup-dir <folder>
+  filedelta compact -backup-dir <folder>
+      [-delete-old]
 
 Commands:
   full    Create a full archive and start a new backup chain.
   diff    Archive additions and changes since the last full/diff; record deletions.
   latest  Rebuild the current state from the chain and write latest.tar.gz.
+  compact Rebuild the current state as a new full archive and start a new chain.
+          -delete-old Remove previous full and differential archives after success.
 
 The backup directory must not be inside the source folder.
 Run a full backup before creating differential backups.`)
