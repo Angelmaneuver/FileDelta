@@ -78,10 +78,15 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+  
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
-      - env:
+  
+      - name: Create GitHub release
+        env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes
