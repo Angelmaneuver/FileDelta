@@ -18,6 +18,19 @@ For example, build a Linux x86-64 binary from another platform with:
 GOOS=linux GOARCH=amd64 go build -o filedelta ./cmd/filedelta
 ```
 
+## GitHub Releases
+
+GitHub Actions runs tests and `go vet` on pushes and pull requests. To publish
+release binaries for Linux, macOS, and Windows, create and push a version tag:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow builds amd64 and arm64 binaries and creates a GitHub Release with
+`.tar.gz` archives for Linux and macOS and `.zip` archives for Windows.
+
 ## Project layout
 
 ```text
