@@ -1,0 +1,61 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "editor.formatOnSave": true,
+    "[go]": {
+      "editor.defaultFormatter": "golang.go"
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "golang.go"
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Go: Build FileDelta",
+        "type": "process",
+        "command": "go",
+        "args": [
+          "build",
+          "./cmd/filedelta"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        },
+        "problemMatcher": [
+          "$go"
+        ]
+      },
+      {
+        "label": "Go: Test",
+        "type": "process",
+        "command": "go",
+        "args": [
+          "test",
+          "./..."
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": {
+          "kind": "test",
+          "isDefault": true
+        },
+        "problemMatcher": [
+          "$go"
+        ]
+      }
+    ]
+  }
+}
